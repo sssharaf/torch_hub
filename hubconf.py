@@ -21,45 +21,52 @@ class MyModel3(nn.Module):
     def __init__(self, freeze_bert=True):
         super().__init__()
         self.model_version = 3
-        # self.static_bert_lyr = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=False)
+
         self.bert_lyr = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
 
         self.a_attn = nn.Linear(768, 1)
 
         self.c_attn = nn.Linear(768, 1)
 
-        self.attn_dropout = nn.Dropout(0.1)
+        self.attn_dropout = nn.Dropout(0.1, inplace=False)
 
-        self.ctx_transfomer = nn.Sequential(nn.Dropout(0.1), nn.Linear(768, 768), nn.LayerNorm(768))
+        # self.ctx_transfomer = nn.Sequential(nn.LayerNorm(768),nn.Dropout(0.1),nn.Linear(768,768),nn.Tanh())
 
-        self.a_switch = nn.Sequential(nn.Linear(768 * 2, 1), nn.Sigmoid())
-        self.c_switch = nn.Sequential(
+        self.a_switch = nn.Sequential(
+            nn.Dropout(0.1),
             nn.Linear(768 * 2, 1),
+            # nn.LayerNorm(1),
+            nn.Sigmoid()
+        )
+
+        self.c_switch = nn.Sequential(
+            nn.Dropout(0.1),
+            nn.Linear(768 * 2, 1),
+            # nn.LayerNorm(1),
             nn.Sigmoid(),
         )
 
         self.action_cls_lyr = nn.Sequential(
             nn.Dropout(0.1),
-            nn.Linear(768, 64, bias=True),
-            nn.ReLU(),
+            nn.Linear(768, 64, bias=False),
+            nn.ELU(),
             nn.LayerNorm(64),
-            nn.Linear(64, 4, bias=True),
-            nn.LayerNorm(4),
+            nn.Dropout(0.1),
+            nn.Linear(64, 4, bias=False),
+            # nn.LayerNorm(len(action_le.classes_)),
             # nn.Linear(768,len(action_le.classes_),bias=False),
         )
 
         self.component_cls_lyr = nn.Sequential(
             nn.Dropout(0.1),
-            nn.Linear(768, 64, bias=True),
-            nn.ReLU(),
+            nn.Linear(768, 64, bias=False),
+            nn.ELU(),
             nn.LayerNorm(64),
-            nn.Linear(64, 5, bias=True),
-            nn.LayerNorm(5),
+            nn.Dropout(0.1),
+            nn.Linear(64, 5, bias=False),
+            # nn.LayerNorm(len(component_le.classes_)),
             # nn.Linear(768,len(component_le.classes_),bias=False),
         )
-
-        # for p in self.static_bert_lyr.parameters():
-        #   p.requires_grad = False
 
         # Freeze bert layers
         if freeze_bert:
@@ -69,18 +76,16 @@ class MyModel3(nn.Module):
         # nn.init.xavier_uniform_(self.action_cls_lyr)
         # nn.init.xavier_uniform_(self.component_cls_lyr)
 
-    def forward(self, seq, attn_masks, output_attn=False, output_hs=False):
+    def forward(self, seq, attn_masks, output_attn=False, output_hs=False, output_switch=False):
         attn_mask_cls = (1 - attn_masks) * -10000
         attn_mask_cls.unsqueeze_(dim=-1)
 
-        # static_emb,static_ctx = self.static_bert_lyr(seq,attention_mask =attn_masks)
         seq_emb, ctx, hs = self.bert_lyr(seq, attention_mask=attn_masks)
-        ctx = self.ctx_transfomer(ctx.detach())
-        # seq_emb +=static_emb
+        # ctx = self.ctx_transfomer(ctx)
         a = self.a_attn(seq_emb)
         a = a + attn_mask_cls
         a = a_output = a.softmax(dim=1)
-        a = self.attn_dropout(a)
+        # a = self.attn_dropout(a)
         a = torch.mul(seq_emb, a)
         a = a.mean(dim=1)
 
@@ -92,16 +97,18 @@ class MyModel3(nn.Module):
         c = c.mean(dim=1)
 
         a_switch = self.a_switch(torch.cat([ctx, a], dim=-1))
-        a = a_switch * a + (1 - a_switch) * ctx
+        a = a_switch * a + (1.0 - a_switch) * ctx
 
         c_switch = self.c_switch(torch.cat([ctx, c], dim=-1))
-        c = c_switch * c + (1 - c_switch) * ctx
+        c = c_switch * c + (1.0 - c_switch) * ctx
 
         outputs = [self.action_cls_lyr(a), self.component_cls_lyr(c)]
         if (output_attn):
             outputs += [a_output, c_output]
         if output_hs:
             outputs += [hs]
+        if output_switch:
+            outputs += [a_switch, c_switch]
         return outputs
 
 
