@@ -3,6 +3,12 @@ import torch
 import torch.nn as nn
 from pytorch_transformers import BertTokenizer, BertConfig,BertForMaskedLM,BertModel,DistilBertTokenizer, DistilBertModel,DistilBertForSequenceClassification
 
+def model31(*args, **kwargs):
+    model =MyModel3()
+    checkpoint = 'https://s-ml-pretrained.s3.amazonaws.com/model-3-1.dat'
+    model.load_state_dict(torch.hub.load_state_dict_from_url(checkpoint,map_location=torch.device('cpu'), progress=True))
+    return model
+
 def model3(*args, **kwargs):
     model =MyModel3()
     checkpoint = 'https://s-ml-pretrained.s3.amazonaws.com/model-3.dat'
@@ -15,6 +21,100 @@ def model2(*args, **kwargs):
     model.load_state_dict(torch.hub.load_state_dict_from_url(checkpoint,map_location=torch.device('cpu'), progress=True))
     return model
 
+
+############################### Model 3-1  ############################################
+class MyModel31(nn.Module):
+    def __init__(self, freeze_bert=True):
+        super().__init__()
+        self.model_version = 3
+
+        self.bert_lyr = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True)
+
+        self.a_attn = nn.Linear(768, 1, bias=False)
+
+        self.c_attn = nn.Linear(768, 1, bias=False)
+
+        self.attn_dropout = nn.Dropout(0.1, inplace=False)
+
+        self.a_switch = nn.Sequential(
+            nn.Dropout(0.1),
+            nn.Linear(768 * 2, 64),
+            nn.ELU(),
+            nn.LayerNorm(64),
+            nn.Dropout(0.1),
+            nn.Linear(64, 1),
+            nn.Sigmoid(),
+        )
+
+        self.c_switch = nn.Sequential(
+            nn.Dropout(0.1),
+            nn.Linear(768 * 2, 64),
+            nn.ELU(),
+            nn.LayerNorm(64),
+            nn.Dropout(0.1),
+            nn.Linear(64, 1),
+            nn.Sigmoid(),
+        )
+
+        self.action_cls_lyr = nn.Sequential(
+            nn.Dropout(0.1),
+            nn.Linear(768, 64, bias=False),
+            nn.ELU(),
+            nn.LayerNorm(64),
+            nn.Dropout(0.1),
+            nn.Linear(64, 4, bias=False),
+        )
+
+        self.component_cls_lyr = nn.Sequential(
+            nn.Dropout(0.1),
+            nn.Linear(768, 64, bias=False),
+            nn.ELU(),
+            nn.LayerNorm(64),
+            nn.Dropout(0.1),
+            nn.Linear(64, 5, bias=False),
+        )
+
+        # Freeze bert layers
+        if freeze_bert:
+            for p in self.bert_lyr.parameters():  # self.bert_lyr.parameters():
+                p.requires_grad = False
+        # nn.init.xavier_uniform_(self.action_cls_lyr)
+        # nn.init.xavier_uniform_(self.component_cls_lyr)
+
+    def forward(self, seq, attn_masks, output_attn=False, output_hs=False, output_switch=False):
+        attn_mask_cls = (1 - attn_masks) * -10000
+        attn_mask_cls.unsqueeze_(dim=-1)
+
+        seq_emb, ctx, hs = self.bert_lyr(seq, attention_mask=attn_masks)
+
+        a = self.a_attn(seq_emb)
+        a = a + attn_mask_cls
+        a = a_output = a.softmax(dim=1)
+        a = self.attn_dropout(a)
+        a = torch.mul(seq_emb, a)
+        a = a.mean(dim=1)
+
+        c = self.c_attn(seq_emb)
+        c = c + attn_mask_cls
+        c = c_output = c.softmax(dim=1)
+        c = self.attn_dropout(c)
+        c = torch.mul(seq_emb, c)
+        c = c.mean(dim=1)
+
+        a_switch = self.a_switch(torch.cat([ctx.detach(), a], dim=-1))
+        a = (1 - a_switch) * a + a_switch * ctx
+
+        c_switch = self.c_switch(torch.cat([ctx.detach(), c], dim=-1))
+        c = (1 - c_switch) * c + c_switch * ctx
+
+        outputs = [self.action_cls_lyr(a), self.component_cls_lyr(c)]
+        if (output_attn):
+            outputs += [a_output, c_output]
+        if output_hs:
+            outputs += [hs]
+        if output_switch:
+            outputs += [a_switch, c_switch]
+        return outputs
 
 ############################### Model 3  ############################################
 class MyModel3(nn.Module):
