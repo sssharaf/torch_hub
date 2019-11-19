@@ -3,6 +3,12 @@ import torch
 import torch.nn as nn
 from pytorch_transformers import BertTokenizer, BertConfig,BertForMaskedLM,BertModel,DistilBertTokenizer, DistilBertModel,DistilBertForSequenceClassification
 
+def model4(*args, **kwargs):
+    model =MyModel4()
+    checkpoint = 'https://s-ml-pretrained.s3.amazonaws.com/model-4.dat'
+    model.load_state_dict(torch.hub.load_state_dict_from_url(checkpoint,map_location=torch.device('cpu'), progress=True))
+    return model
+
 def model31(*args, **kwargs):
     model =MyModel3()
     checkpoint = 'https://s-ml-pretrained.s3.amazonaws.com/model-3-1.dat'
@@ -282,3 +288,46 @@ class MyModel2(nn.Module):
             outputs += [hs]
         return outputs
 #####################################################################################
+
+
+############################### Model 4  ############################################
+class MyModel4(nn.Module):
+    def __init__(self, freeze_bert=True):
+        super().__init__()
+        self.model_version = 4
+
+        self.bert_lyr = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True,
+                                                  output_attentions=True)
+
+        # self.comp_bert_lyr = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=True,output_attentions=True)
+
+        self.config = self.bert_lyr.config;
+
+        self.action_cls_lyr = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(768, 4),
+        )
+        self.comp_cls_lyr = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(768, 5),
+        )
+
+        # Freeze bert layers
+        if freeze_bert:
+            for p in self.bert_lyr.parameters():
+                p.requires_grad = False
+            for p in self.comp_bert_lyr.parameters():
+                p.requires_grad = False
+
+    def forward(self, seq, attn_masks, output_attn=False, output_hs=False):
+
+        seq_emb, pooled, hs, attn = self.bert_lyr(seq, attention_mask=attn_masks)
+
+        # c_seq_emb,c_pooled,c_hs,c_attn = self.comp_bert_lyr(seq,attention_mask =attn_masks)
+
+        outputs = []
+        outputs += [
+            self.action_cls_lyr(pooled),
+            self.comp_cls_lyr(pooled),
+        ]
+        return outputs
