@@ -3,6 +3,12 @@ import torch
 import torch.nn as nn
 from pytorch_transformers import BertTokenizer, BertConfig,BertForMaskedLM,BertModel,DistilBertTokenizer, DistilBertModel,DistilBertForSequenceClassification
 
+def model7(*args, **kwargs):
+    model =MyModel7()
+    checkpoint = 'https://s-ml-pretrained.s3.amazonaws.com/model-7.dat'
+    model.load_state_dict(torch.hub.load_state_dict_from_url(checkpoint,map_location=torch.device('cpu'), progress=True))
+    return model
+
 def model5(*args, **kwargs):
     model =MyModel5()
     checkpoint = 'https://s-ml-pretrained.s3.amazonaws.com/model-5.dat'
@@ -381,3 +387,83 @@ class MyModel5(nn.Module):
             self.comp_cls_lyr(c_pooled),
         ]
         return outputs
+
+
+############################### Model 7  ############################################
+
+class MyModel7(nn.Module):
+    def __init__(self, freeze_bert=True):
+        super().__init__()
+        self.model_version = 7
+
+        self.bert_lyr = BertModel.from_pretrained('bert-base-uncased', output_hidden_states=True,
+                                                  output_attentions=True)
+
+        # self.comp_bert_lyr = BertModel.from_pretrained('bert-base-uncased',output_hidden_states=True,output_attentions=True)
+
+        self.config = self.bert_lyr.config;
+
+        self.a_attn = nn.Linear(768, 1)
+
+        self.c_attn = nn.Linear(768, 1)
+
+        self.action_cls_lyr = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(768, 4),
+        )
+        self.comp_cls_lyr = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(768, 5),
+        )
+
+        # Freeze bert layers
+        if freeze_bert:
+            self.freeze_bert()
+        else:
+            self.freeze_bert()
+            self.unfreeze_bert()
+
+    def freeze_bert(self):
+        for p in self.bert_lyr.parameters():
+            p.requires_grad = False
+        # for p in self.comp_bert_lyr.parameters():
+        #   p.requires_grad = False
+
+    def unfreeze_bert(self, from_lyr=6):
+
+        for lyr in self.bert_lyr.encoder.layer[-6:]:
+            for p in lyr.parameters():
+                p.requires_grad = True
+        # for lyr in self.comp_bert_lyr.encoder.layer[-6:]:
+        #   for p in lyr.parameters():
+        #     p.requires_grad = True
+
+    def forward(self, seq, attn_masks, output_attn=False, output_hs=False):
+        attn_mask_cls = (1 - attn_masks) * -10000
+        attn_mask_cls.unsqueeze_(dim=-1)
+        seq_emb, pooled, hs, attn = self.bert_lyr(seq, attention_mask=attn_masks)
+
+        # c_seq_emb,c_pooled,c_hs,c_attn = self.comp_bert_lyr(seq,attention_mask =attn_masks)
+        a, a_output = self.attention(seq_emb, self.a_attn, attn_mask_cls)
+
+        c, c_output = self.attention(seq_emb, self.c_attn, attn_mask_cls)
+
+        a_pooled = a
+        c_pooled = c
+        outputs = []
+        outputs += [
+            self.action_cls_lyr(a_pooled),
+            self.comp_cls_lyr(c_pooled),
+        ]
+        if (output_attn):
+            outputs += [a_output, c_output]
+        return outputs
+
+    def attention(self, seq_emb, attn_lyr, attn_mask_cls):
+        a = attn_lyr(seq_emb)
+        a = a + attn_mask_cls
+        a = a_output = a.softmax(dim=1)
+        # a_output = a.clone()
+        a = torch.mul(seq_emb, a)
+        a = a.mean(dim=1)
+        return a, a_output
