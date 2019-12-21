@@ -54,7 +54,7 @@ class MyModel11(nn.Module):
         super().__init__()
         self.model_version = '11'
         # MODEL_NAME='bert-base-uncased'
-        self.bert_lyr = BertForSequenceClassification(BertConfig.from_pretrained('bert-base-uncased'))
+        self.bert_lyr = BertForSequenceClassification(BertConfig.from_pretrained('bert-base-uncased',num_labels=9))
 
     def freeze_bert(self):
         self._freeze_bert(self.bert_lyr)
