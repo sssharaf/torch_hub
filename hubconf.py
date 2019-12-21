@@ -39,6 +39,34 @@ def model2(*args, **kwargs):
     model.load_state_dict(torch.hub.load_state_dict_from_url(checkpoint,map_location=torch.device('cpu'), progress=True))
     return model
 
+def model11(*args, **kwargs):
+    model =MyModel11()
+    checkpoint = 'https://s-ml-pretrained.s3.amazonaws.com/model-11.dat'
+    device = 'cpu' if 'device' not in kwargs else kwargs['device']
+    model.load_state_dict(torch.hub.load_state_dict_from_url(checkpoint,map_location=torch.device(device), progress=True))
+    return model
+
+
+############################### Model 11  ############################################
+# Model
+class MyModel11(nn.Module):
+    def __init__(self, freeze_bert=True, attn_dropout=0.3):
+        super().__init__()
+        self.model_version = '11'
+        # MODEL_NAME='bert-base-uncased'
+        self.bert_lyr = BertForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=9)
+
+    def freeze_bert(self):
+        self._freeze_bert(self.bert_lyr)
+
+    def _freeze_bert(self, bert_model):
+        for p in bert_model.bert.parameters():
+            p.requires_grad = False
+
+    def forward(self, seq, attn_masks, output_attn=False, output_hs=False):
+        (o,) = self.bert_lyr(seq, attn_masks)
+        return (o[:, :4], o[:, 4:])
+
 
 ############################### Model 3-1  ############################################
 class MyModel31(nn.Module):
