@@ -1,7 +1,7 @@
 dependencies = ['torch','pytorch_transformers']
 import torch
 import torch.nn as nn
-from pytorch_transformers import BertTokenizer, BertConfig,BertForMaskedLM,BertModel,DistilBertTokenizer, DistilBertModel,DistilBertForSequenceClassification
+from pytorch_transformers import BertForSequenceClassification, BertTokenizer, BertConfig,BertForMaskedLM,BertModel,DistilBertTokenizer, DistilBertModel,DistilBertForSequenceClassification
 
 def model7(*args, **kwargs):
     model =MyModel7()
@@ -54,7 +54,7 @@ class MyModel11(nn.Module):
         super().__init__()
         self.model_version = '11'
         # MODEL_NAME='bert-base-uncased'
-        self.bert_lyr = BertForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=9)
+        self.bert_lyr = BertForSequenceClassification(BertConfig.from_pretrained('bert-base-uncased'))
 
     def freeze_bert(self):
         self._freeze_bert(self.bert_lyr)
