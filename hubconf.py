@@ -1,7 +1,7 @@
-dependencies = ['torch','pytorch_transformers']
+dependencies = ['torch','transformers']
 import torch
 import torch.nn as nn
-from pytorch_transformers import BertForSequenceClassification, BertTokenizer, BertConfig,BertForMaskedLM,BertModel,DistilBertTokenizer, DistilBertModel,DistilBertForSequenceClassification
+from transformers import BertForSequenceClassification, BertTokenizer, BertConfig,BertForMaskedLM,BertModel,DistilBertTokenizer, DistilBertModel,DistilBertForSequenceClassification
 
 def model7(*args, **kwargs):
     model =MyModel7()
